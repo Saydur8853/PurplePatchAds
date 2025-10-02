@@ -83,3 +83,9 @@ python app.py
 Open your web browser and navigate to:
 
 - Local: `http://127.0.0.1:5000`
+
+## Output Folder
+
+The script automatically saves analysis results in the `output/` folder:
+- **Ads.Txt/**: Contains processed ads.txt files with line numbers and competitor analysis
+- **Adslot code/**: Contains generated HTML ad slot codes for PurplePatch integration
