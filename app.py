@@ -228,8 +228,14 @@ def upload_files():
                 'avg_viewability': sum(slot['viewability_score'] for slot in slot_analyzer.slots) / len(slot_analyzer.slots) if slot_analyzer.slots else 0
             }
     
-    # Generate output files directly
+# Generate output files directly
     generate_output_files(results, analysis_id)
+
+    # Print summary to terminal
+    try:
+        print_results_to_console(results)
+    except Exception:
+        pass
     
     return render_template('results.html', results=results)
 
@@ -277,6 +283,18 @@ def analyze_url():
                             'total_slots': len(detected_slots),
                             'avg_viewability': sum(slot['viewability_score'] for slot in detected_slots) / len(detected_slots) if detected_slots else 0
                         }
+
+                    # Detect competitor ad slots as well
+                    try:
+                        comp_slots = detect_competitor_ad_slots(website_response.text, publisher_url)
+                        if comp_slots:
+                            results['competitor_ad_slots'] = {
+                                'slots': comp_slots,
+                                'total_slots': len(comp_slots),
+                                'avg_viewability': sum(s['viewability_score'] for s in comp_slots) / len(comp_slots) if comp_slots else 0
+                            }
+                    except Exception:
+                        pass
             except Exception as e:
                 # If website scraping fails, continue without ad slot data
                 pass
@@ -286,8 +304,14 @@ def analyze_url():
     except Exception as e:
         results['ads_txt_error'] = f'Error fetching ads.txt: {str(e)}'
     
-    # Generate output files directly
+# Generate output files directly
     generate_output_files(results, analysis_id)
+
+    # Print summary to terminal
+    try:
+        print_results_to_console(results)
+    except Exception:
+        pass
     
     return render_template('results.html', results=results)
 
@@ -332,8 +356,14 @@ def sample_analysis():
             'sample_file': 'bangla_news24_adslot_codes_purple_patch.txt'
         }
     
-    # Generate output files directly
+# Generate output files directly
     generate_output_files(results, analysis_id)
+
+    # Print summary to terminal
+    try:
+        print_results_to_console(results)
+    except Exception:
+        pass
     
     return render_template('results.html', results=results)
 
@@ -505,6 +535,146 @@ def create_suggested_slot(slot_id, publisher_name, publisher_url, category, widt
         'viewability_score': calculate_basic_viewability_score(width, height, position)
     }
 
+def detect_competitor_ad_slots(html_content, website_url):
+    """Detect competitor ad slots (non-PurplePatch) and infer positions and viewability.
+
+    Heuristics used:
+    - Adsense: <ins class="adsbygoogle"> elements
+    - GPT/Google Ad Manager: <div id="div-gpt-ad..."> or class contains gpt-ad
+    - Common ad iframes: src contains well-known ad domains (doubleclick, googlesyndication, taboola, outbrain, media.net, criteo, pubmatic, rubiconproject, openx, adnxs, appnexus, indexww, yahoo, amazon-adsystem)
+    - Basic size extraction from attributes or inline styles
+    - Position/category inferred from nearest section elements (header, sidebar, content, footer)
+    """
+    soup = BeautifulSoup(html_content, 'html.parser')
+    competitor_slots = []
+    slot_idx = 1
+
+    def mk_slot_dict(el, network, width, height, pos, cat):
+        nonlocal slot_idx
+        slot = {
+            'slot_id': f'C{slot_idx}',
+            'network': network,
+            'publisher_name': extract_domain_name(website_url),
+            'publisher_url': website_url,
+            'ad_type': 'Banner',
+            'category': cat or 'Website Content',
+            'position': pos or 'Unknown',
+            'width': str(width) if width else '0',
+            'height': str(height) if height else '0',
+            'timestamp': datetime.now().strftime('%Y-%m-%dT%H:%M:%S.%fZ')[:-3] + 'Z',
+            'viewability_score': calculate_basic_viewability_score(width or '0', height or '0', pos or 'Unknown')
+        }
+        slot_idx += 1
+        return slot
+
+    # Helper: infer size from element attributes/style
+    def infer_size(el):
+        width = None
+        height = None
+        # Try attributes
+        try:
+            if el.has_attr('width'):
+                width = int(re.sub(r'[^0-9]', '', str(el.get('width'))))
+            if el.has_attr('height'):
+                height = int(re.sub(r'[^0-9]', '', str(el.get('height'))))
+        except Exception:
+            pass
+        # Try style inline
+        try:
+            style = el.get('style') or ''
+            w_match = re.search(r'width\s*:\s*(\d+)\s*px', style, re.IGNORECASE)
+            h_match = re.search(r'height\s*:\s*(\d+)\s*px', style, re.IGNORECASE)
+            if w_match:
+                width = int(w_match.group(1))
+            if h_match:
+                height = int(h_match.group(1))
+        except Exception:
+            pass
+        # Fallbacks for common formats when missing any dimension
+        if not width or not height:
+            # Look for data- attributes like data-ad-format or class names containing size
+            for attr in ['data-ad-format', 'data-ad-slot', 'data-size']:
+                val = el.get(attr)
+                if val and isinstance(val, str):
+                    m = re.search(r'(\d{2,4})\s*[xX]\s*(\d{2,4})', val)
+                    if m:
+                        width = width or int(m.group(1))
+                        height = height or int(m.group(2))
+                        break
+            # Check class list for sizes
+            try:
+                classes = ' '.join(el.get('class', [])).lower()
+                m2 = re.search(r'(\d{2,4})x(\d{2,4})', classes)
+                if m2:
+                    width = width or int(m2.group(1))
+                    height = height or int(m2.group(2))
+            except Exception:
+                pass
+        return width, height
+
+    # Helper: infer position and category from DOM context
+    def infer_position_and_category(el):
+        pos = None
+        cat = None
+        # Traverse up to find meaningful container
+        container = el
+        for _ in range(5):
+            if not container or not getattr(container, 'parent', None):
+                break
+            container = container.parent
+            try:
+                classes = ' '.join(container.get('class', [])).lower()
+                tag = container.name.lower()
+            except Exception:
+                classes = ''
+                tag = ''
+            if any(k in classes for k in ['header', 'top', 'masthead']) or tag == 'header':
+                pos = pos or 'Header'
+                cat = cat or 'Desktop Header'
+            if any(k in classes for k in ['sidebar', 'aside']) or tag == 'aside':
+                pos = pos or 'Sidebar'
+                cat = cat or 'Desktop Sidebar'
+            if any(k in classes for k in ['content', 'article', 'main']) or tag in ['main', 'article']:
+                pos = pos or 'Content'
+                cat = cat or 'Desktop Article Content'
+            if any(k in classes for k in ['footer', 'bottom']) or tag == 'footer':
+                pos = pos or 'Footer'
+                cat = cat or 'Desktop Footer'
+        return pos or 'Content', cat or 'Website Content'
+
+    # 1) Adsense blocks
+    for ins in soup.find_all('ins', class_=lambda v: v and 'adsbygoogle' in ' '.join(v).lower()):
+        pos, cat = infer_position_and_category(ins)
+        w, h = infer_size(ins)
+        competitor_slots.append(mk_slot_dict(ins, 'Google AdSense', w, h, pos, cat))
+
+    # 2) GPT/GAM containers by common ids/classes
+    for div in soup.find_all('div', id=re.compile(r'^div-gpt-ad', re.I)):
+        pos, cat = infer_position_and_category(div)
+        w, h = infer_size(div)
+        competitor_slots.append(mk_slot_dict(div, 'Google Ad Manager', w, h, pos, cat))
+    for div in soup.find_all('div', class_=lambda v: v and any(x in ' '.join(v).lower() for x in ['gpt-ad', 'ad-slot', 'adslot'])):
+        pos, cat = infer_position_and_category(div)
+        w, h = infer_size(div)
+        competitor_slots.append(mk_slot_dict(div, 'Google Ad Manager', w, h, pos, cat))
+
+    # 3) Generic ad iframes by known ad tech hostnames
+    ad_hosts = [
+        'doubleclick.net', 'googlesyndication.com', 'googletagservices.com', 'taboola.com', 'outbrain.com',
+        'media.net', 'criteo.net', 'rubiconproject.com', 'pubmatic.com', 'openx.net',
+        'adnxs.com', 'appnexus.com', 'indexww.com', 'yahoo.com', 'amazon-adsystem.com'
+    ]
+    for iframe in soup.find_all('iframe'):
+        src = iframe.get('src', '') or ''
+        if any(h in src for h in ad_hosts):
+            pos, cat = infer_position_and_category(iframe)
+            w, h = infer_size(iframe)
+            # Determine network label from src
+            net_label = next((h for h in ad_hosts if h in src), 'Ad Network')
+            competitor_slots.append(mk_slot_dict(iframe, net_label, w, h, pos, cat))
+
+    return competitor_slots
+
 def generate_output_files(results, analysis_id):
     """Generate output files directly in sample format"""
     # Create folder structure like Sample folder
@@ -617,6 +787,49 @@ def generate_sample_adslot_format(ad_slot_data, website_name):
             lines.append("")
     
     return "\n".join(lines)
+
+
+def print_results_to_console(results):
+    """Pretty-print a concise summary of analysis to the terminal."""
+    print("\n=== PurplePatch Ads Analyzer (Console Summary) ===")
+    print(f"Analysis ID: {results.get('analysis_id', 'N/A')}")
+    if results.get('publisher_url'):
+        print(f"Publisher URL: {results['publisher_url']}")
+
+    # Ads.txt summary
+    if 'ads_txt' in results:
+        ads = results['ads_txt']
+        print("\n[ads.txt]")
+        print(f"  Total entries: {ads.get('total_entries', 0)}")
+        print(f"  PurplePatch entries: {ads.get('purplepatch_count', 0)}")
+        if ads.get('purplepatch_found'):
+            sample_pp = ads['purplepatch_found'][:3]
+            for e in sample_pp:
+                print(f"    - {e.get('domain')} | {e.get('seller_id')} | {e.get('relationship')}")
+        print(f"  Competitor domains: {len(ads.get('competitors', {}))}")
+
+    # PurplePatch ad slots summary
+    if 'ad_slots' in results:
+        sl = results['ad_slots']
+        print("\n[PurplePatch Ad Slots]")
+        print(f"  Total slots: {sl.get('total_slots', 0)} | Avg viewability: {sl.get('avg_viewability', 0):.1f}%")
+        for s in sl.get('slots', [])[:5]:
+            print(f"    - Slot {s.get('slot_id')} | {s.get('width')}x{s.get('height')} | {s.get('category')} | {s.get('position')} | {s.get('viewability_score')}%")
+
+    # Competitor ad slots summary
+    if 'competitor_ad_slots' in results:
+        cs = results['competitor_ad_slots']
+        print("\n[Competitor Ad Slots]")
+        print(f"  Total slots: {cs.get('total_slots', 0)} | Avg viewability: {cs.get('avg_viewability', 0):.1f}%")
+        # Summarize by network
+        net_counts = {}
+        for s in cs.get('slots', []):
+            net = s.get('network', 'Other')
+            net_counts[net] = net_counts.get(net, 0) + 1
+        for net, cnt in sorted(net_counts.items(), key=lambda x: -x[1])[:5]:
+            print(f"    - {net}: {cnt}")
+
+    print("=== End of Summary ===\n")
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)

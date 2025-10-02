@@ -82,6 +82,34 @@
         </div>
     </div>
     {% endif %}
+
+    {% if results.competitor_ad_slots %}
+    <div class="col-md-3 mb-3">
+        <div class="card metric-card h-100">
+            <div class="card-body text-center">
+                <div class="display-6 bg-secondary text-white rounded-circle d-inline-flex align-items-center justify-content-center" 
+                     style="width: 60px; height: 60px;">
+                    {{ results.competitor_ad_slots.total_slots }}
+                </div>
+                <h6 class="mt-2 mb-0">Competitor Slots</h6>
+                <small class="text-muted">Total found</small>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-3 mb-3">
+        <div class="card metric-card h-100">
+            <div class="card-body text-center">
+                <div class="display-6 bg-dark text-white rounded-circle d-inline-flex align-items-center justify-content-center" 
+                     style="width: 60px; height: 60px;">
+                    {{ "%.0f"|format(results.competitor_ad_slots.avg_viewability) }}%
+                </div>
+                <h6 class="mt-2 mb-0">Competitor Avg Viewability</h6>
+                <small class="text-muted">Estimated score</small>
+            </div>
+        </div>
+    </div>
+    {% endif %}
 </div>
 
 <!-- Ads.txt Analysis Results -->
@@ -337,6 +365,88 @@
             <div class="alert alert-info">
                 <i class="fas fa-info-circle"></i>
                 No PurplePatch ad slots found in the uploaded file.
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
+<!-- Competitor Ad Slots Analysis Results -->
+{% if results.competitor_ad_slots %}
+<div class="card mb-4">
+    <div class="card-header">
+        <h4 class="mb-0">
+            <i class="fas fa-users"></i> Competitor Ad Slots
+        </h4>
+    </div>
+    <div class="card-body">
+        {% set cs = results.competitor_ad_slots %}
+        {% if cs.slots %}
+            <!-- Overview -->
+            <div class="row mb-3">
+                <div class="col-md-4">
+                    <div class="text-center">
+                        <h3 class="text-secondary">{{ cs.total_slots }}</h3>
+                        <small class="text-muted">Total Competitor Slots</small>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="text-center">
+                        <h3 class="text-dark">{{ "%.1f"|format(cs.avg_viewability) }}%</h3>
+                        <small class="text-muted">Average Viewability</small>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="text-center">
+                        <h6 class="text-muted mb-1">Networks (sample)</h6>
+                        <div>
+                            {% for n in (cs.slots|map(attribute='network')|list)[:3] %}
+                                <span class="badge bg-light text-dark">{{ n }}</span>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Detailed Competitor Slots Table -->
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead class="table-secondary">
+                        <tr>
+                            <th>Network</th>
+                            <th>Size</th>
+                            <th>Category</th>
+                            <th>Position</th>
+                            <th>Viewability</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for slot in cs.slots %}
+                        <tr>
+                            <td><small>{{ slot.network or 'Ad Network' }}</small></td>
+                            <td>
+                                <span class="badge bg-secondary">{{ slot.width }}x{{ slot.height }}</span>
+                            </td>
+                            <td><small>{{ slot.category or 'N/A' }}</small></td>
+                            <td><span class="badge bg-info">{{ slot.position or 'N/A' }}</span></td>
+                            <td>
+                                {% if slot.viewability_score >= 75 %}
+                                    <span class="viewability-high">{{ slot.viewability_score }}%</span>
+                                {% elif slot.viewability_score >= 50 %}
+                                    <span class="viewability-medium">{{ slot.viewability_score }}%</span>
+                                {% else %}
+                                    <span class="viewability-low">{{ slot.viewability_score }}%</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <div class="alert alert-info">
+                <i class="fas fa-info-circle"></i>
+                No competitor ad slots detected.
             </div>
         {% endif %}
     </div>
