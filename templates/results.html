@@ -1,0 +1,441 @@
+{% extends "base.html" %}
+
+{% block title %}Analysis Results - PurplePatch Ads Analyzer{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h1 class="display-6">
+            <i class="fas fa-chart-bar"></i> Analysis Results
+        </h1>
+        <p class="text-muted mb-0">
+            Analysis ID: {{ results.analysis_id }}
+            {% if results.is_sample %}
+                <span class="badge bg-warning ms-2">Sample Data</span>
+            {% endif %}
+            {% if results.publisher_url %}
+                | URL: {{ results.publisher_url }}
+            {% endif %}
+        </p>
+    </div>
+    <div>
+        <a href="{{ url_for('index') }}" class="btn btn-primary">
+            <i class="fas fa-plus"></i> New Analysis
+        </a>
+    </div>
+</div>
+
+<!-- Summary Cards -->
+<div class="row mb-4">
+    {% if results.ads_txt %}
+    <div class="col-md-3 mb-3">
+        <div class="card metric-card h-100">
+            <div class="card-body text-center">
+                <div class="display-6 purplepatch-badge rounded-circle d-inline-flex align-items-center justify-content-center" 
+                     style="width: 60px; height: 60px;">
+                    {{ results.ads_txt.purplepatch_count }}
+                </div>
+                <h6 class="mt-2 mb-0">PurplePatch Entries</h6>
+                <small class="text-muted">Found in ads.txt</small>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-3 mb-3">
+        <div class="card metric-card h-100">
+            <div class="card-body text-center">
+                <div class="display-6 competitor-badge rounded-circle d-inline-flex align-items-center justify-content-center" 
+                     style="width: 60px; height: 60px;">
+                    {{ results.ads_txt.competitors|length }}
+                </div>
+                <h6 class="mt-2 mb-0">Competitors</h6>
+                <small class="text-muted">Unique domains</small>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+    
+    {% if results.ad_slots %}
+    <div class="col-md-3 mb-3">
+        <div class="card metric-card h-100">
+            <div class="card-body text-center">
+                <div class="display-6 bg-info text-white rounded-circle d-inline-flex align-items-center justify-content-center" 
+                     style="width: 60px; height: 60px;">
+                    {{ results.ad_slots.total_slots }}
+                </div>
+                <h6 class="mt-2 mb-0">Ad Slots</h6>
+                <small class="text-muted">Total found</small>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-3 mb-3">
+        <div class="card metric-card h-100">
+            <div class="card-body text-center">
+                <div class="display-6 bg-success text-white rounded-circle d-inline-flex align-items-center justify-content-center" 
+                     style="width: 60px; height: 60px;">
+                    {{ "%.0f"|format(results.ad_slots.avg_viewability) }}%
+                </div>
+                <h6 class="mt-2 mb-0">Avg Viewability</h6>
+                <small class="text-muted">Estimated score</small>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Ads.txt Analysis Results -->
+{% if results.ads_txt %}
+<div class="card mb-4">
+    <div class="card-header">
+        <h4 class="mb-0">
+            <i class="fas fa-file-alt"></i> Ads.txt Analysis
+            {% if results.ads_txt.sample_file %}
+                <small class="text-muted">- {{ results.ads_txt.sample_file }}</small>
+            {% endif %}
+        </h4>
+    </div>
+    <div class="card-body">
+        <!-- PurplePatch Entries -->
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <h5 class="text-success">
+                    <i class="fas fa-check-circle"></i> PurplePatch Entries Found
+                    <span class="badge purplepatch-badge">{{ results.ads_txt.purplepatch_count }}</span>
+                </h5>
+                
+                {% if results.ads_txt.purplepatch_found %}
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Domain</th>
+                                    <th>Seller ID</th>
+                                    <th>Relationship</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for entry in results.ads_txt.purplepatch_found %}
+                                <tr>
+                                    <td>{{ entry.domain }}</td>
+                                    <td><code>{{ entry.seller_id }}</code></td>
+                                    <td>
+                                        <span class="badge {% if entry.relationship.upper() == 'DIRECT' %}bg-success{% else %}bg-info{% endif %}">
+                                            {{ entry.relationship }}
+                                        </span>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <div class="alert alert-warning">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        No PurplePatch entries found in ads.txt file
+                    </div>
+                {% endif %}
+            </div>
+            
+            <!-- Top Competitors -->
+            <div class="col-md-6 mb-3">
+                <h5 class="text-info">
+                    <i class="fas fa-users"></i> Top Competitors
+                    <span class="badge bg-info">{{ results.ads_txt.competitors|length }}</span>
+                </h5>
+                
+                {% if results.ads_txt.competitors %}
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Domain</th>
+                                    <th>Direct</th>
+                                    <th>Reseller</th>
+                                    <th>Total</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for domain, competitor in results.ads_txt.competitors.items() %}
+                                {% if loop.index <= 10 %}
+                                <tr>
+                                    <td>
+                                        <strong>{{ competitor.domain }}</strong>
+                                    </td>
+                                    <td>
+                                        {% if competitor.direct_count > 0 %}
+                                            <span class="badge bg-success">{{ competitor.direct_count }}</span>
+                                        {% else %}
+                                            <span class="text-muted">0</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if competitor.reseller_count > 0 %}
+                                            <span class="badge bg-info">{{ competitor.reseller_count }}</span>
+                                        {% else %}
+                                            <span class="text-muted">0</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <strong>{{ competitor.direct_count + competitor.reseller_count }}</strong>
+                                    </td>
+                                </tr>
+                                {% endif %}
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    {% if results.ads_txt.competitors|length > 10 %}
+                    <small class="text-muted">
+                        Showing top 10 of {{ results.ads_txt.competitors|length }} competitors
+                    </small>
+                    {% endif %}
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% elif results.ads_txt_error %}
+<div class="card mb-4">
+    <div class="card-header bg-danger text-white">
+        <h4 class="mb-0">
+            <i class="fas fa-exclamation-triangle"></i> Ads.txt Analysis Error
+        </h4>
+    </div>
+    <div class="card-body">
+        <div class="alert alert-danger">
+            {{ results.ads_txt_error }}
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Ad Slots Analysis Results -->
+{% if results.ad_slots %}
+<div class="card mb-4">
+    <div class="card-header">
+        <h4 class="mb-0">
+            <i class="fas fa-map-marked-alt"></i> Ad Slots Analysis
+            {% if results.ad_slots.sample_file %}
+                <small class="text-muted">- {{ results.ad_slots.sample_file }}</small>
+            {% endif %}
+        </h4>
+    </div>
+    <div class="card-body">
+        {% if results.ad_slots.slots %}
+            <!-- Slots Overview -->
+            <div class="row mb-3">
+                <div class="col-md-4">
+                    <div class="text-center">
+                        <h3 class="text-primary">{{ results.ad_slots.total_slots }}</h3>
+                        <small class="text-muted">Total Ad Slots</small>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="text-center">
+                        <h3 class="text-success">{{ "%.1f"|format(results.ad_slots.avg_viewability) }}%</h3>
+                        <small class="text-muted">Average Viewability</small>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="text-center">
+                        <h3 class="text-info">
+                            {{ results.ad_slots.slots|selectattr('category', 'regex_match', '.*Mobile.*')|list|length }}
+                        </h3>
+                        <small class="text-muted">Mobile Slots</small>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Detailed Slots Table -->
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>Slot ID</th>
+                            <th>Size</th>
+                            <th>Category</th>
+                            <th>Position</th>
+                            <th>Viewability</th>
+                            <th>Publisher</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for slot in results.ad_slots.slots %}
+                        <tr>
+                            <td>
+                                <code class="fw-bold">{{ slot.slot_id }}</code>
+                            </td>
+                            <td>
+                                <span class="badge bg-secondary">
+                                    {{ slot.width }}x{{ slot.height }}
+                                </span>
+                            </td>
+                            <td>
+                                <small>{{ slot.category or 'N/A' }}</small>
+                            </td>
+                            <td>
+                                <span class="badge bg-info">{{ slot.position or 'N/A' }}</span>
+                            </td>
+                            <td>
+                                {% if slot.viewability_score >= 75 %}
+                                    <span class="viewability-high">
+                                        {{ slot.viewability_score }}%
+                                    </span>
+                                {% elif slot.viewability_score >= 50 %}
+                                    <span class="viewability-medium">
+                                        {{ slot.viewability_score }}%
+                                    </span>
+                                {% else %}
+                                    <span class="viewability-low">
+                                        {{ slot.viewability_score }}%
+                                    </span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <small>{{ slot.publisher_name or 'N/A' }}</small>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            
+            <!-- Viewability Distribution -->
+            <div class="mt-4">
+                <h6>Viewability Distribution</h6>
+                <div class="row">
+                    {% set high_viewability = results.ad_slots.slots|selectattr('viewability_score', 'ge', 75)|list|length %}
+                    {% set medium_viewability = results.ad_slots.slots|selectattr('viewability_score', 'ge', 50)|selectattr('viewability_score', 'lt', 75)|list|length %}
+                    {% set low_viewability = results.ad_slots.slots|selectattr('viewability_score', 'lt', 50)|list|length %}
+                    
+                    <div class="col-md-4">
+                        <div class="card text-center">
+                            <div class="card-body">
+                                <h5 class="text-success">{{ high_viewability }}</h5>
+                                <small>High (75%+)</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card text-center">
+                            <div class="card-body">
+                                <h5 class="text-warning">{{ medium_viewability }}</h5>
+                                <small>Medium (50-74%)</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card text-center">
+                            <div class="card-body">
+                                <h5 class="text-danger">{{ low_viewability }}</h5>
+                                <small>Low (<50%)</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+        {% else %}
+            <div class="alert alert-info">
+                <i class="fas fa-info-circle"></i>
+                No PurplePatch ad slots found in the uploaded file.
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
+<!-- Recommendations -->
+<div class="card">
+    <div class="card-header bg-light">
+        <h4 class="mb-0">
+            <i class="fas fa-lightbulb"></i> Recommendations & Insights
+        </h4>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-6">
+                <h6 class="fw-bold text-primary">Ads.txt Optimization:</h6>
+                <ul class="list-unstyled">
+                    {% if results.ads_txt %}
+                        {% if results.ads_txt.purplepatch_count > 0 %}
+                            <li class="mb-2">
+                                <i class="fas fa-check-circle text-success"></i>
+                                PurplePatch is properly configured in ads.txt
+                            </li>
+                        {% else %}
+                            <li class="mb-2">
+                                <i class="fas fa-exclamation-triangle text-warning"></i>
+                                Consider adding PurplePatch entries to ads.txt
+                            </li>
+                        {% endif %}
+                        
+                        {% if results.ads_txt.competitors|length > 10 %}
+                            <li class="mb-2">
+                                <i class="fas fa-info-circle text-info"></i>
+                                High competition detected ({{ results.ads_txt.competitors|length }} networks)
+                            </li>
+                        {% endif %}
+                    {% endif %}
+                    
+                    <li class="mb-2">
+                        <i class="fas fa-sync text-primary"></i>
+                        Regularly monitor and update ads.txt entries
+                    </li>
+                </ul>
+            </div>
+            
+            <div class="col-md-6">
+                <h6 class="fw-bold text-success">Ad Slot Optimization:</h6>
+                <ul class="list-unstyled">
+                    {% if results.ad_slots %}
+                        {% if results.ad_slots.avg_viewability < 60 %}
+                            <li class="mb-2">
+                                <i class="fas fa-arrow-up text-warning"></i>
+                                Consider improving ad slot positioning for better viewability
+                            </li>
+                        {% else %}
+                            <li class="mb-2">
+                                <i class="fas fa-thumbs-up text-success"></i>
+                                Good average viewability score
+                            </li>
+                        {% endif %}
+                        
+                        <li class="mb-2">
+                            <i class="fas fa-mobile-alt text-info"></i>
+                            Mobile slots: {{ results.ad_slots.slots|selectattr('category', 'regex_match', '.*Mobile.*')|list|length }} of {{ results.ad_slots.total_slots }}
+                        </li>
+                    {% endif %}
+                    
+                    <li class="mb-2">
+                        <i class="fas fa-chart-line text-primary"></i>
+                        Monitor slot performance regularly
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Add some interactive features
+    document.addEventListener('DOMContentLoaded', function() {
+        // Highlight high-performing slots
+        const viewabilityElements = document.querySelectorAll('.viewability-high');
+        viewabilityElements.forEach(el => {
+            el.closest('tr').classList.add('table-success');
+        });
+        
+        // Add tooltips (requires Bootstrap JS)
+        var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+        var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+            return new bootstrap.Tooltip(tooltipTriggerEl);
+        });
+    });
+</script>
+{% endblock %}
